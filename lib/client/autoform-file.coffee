@@ -50,6 +50,69 @@ clearFilesFromSession = ->
 		if key.indexOf('fileUpload') > -1
 			Session.set key, ''
 
+getFileDoc = (context)->
+	parentData = Template.parentData(0)?.value or Template.parentData(4)?.value
+	if !!Session.get('fileUpload['+name+']')
+		file = Session.get('fileUpload['+name+']')
+	else if parentData
+		file = parentData
+
+	if file != '' && file?.length == 17
+		fileDoc = getCollection(context).findOne({_id:file})
+	fileDoc
+
+getFile = (context)->
+	# set callback to current template
+	context.onUploaded ?= Template.parentData(13)?.onUploaded
+
+	af = Template.parentData(1)._af
+	# Template.parentData(4).value
+
+	name = context.atts.name
+	collection = getCollection(context)
+
+	if af && af.submitType == 'insert'
+		doc = af.doc
+
+	parentData = Template.parentData(0)?.value or Template.parentData(4)?.value
+	if Session.equals('fileUpload['+name+']', 'delete-file')
+		return null
+	else if !!Session.get('fileUpload['+name+']')
+		file = Session.get('fileUpload['+name+']')
+	else if parentData
+		file = parentData
+	else
+		return null
+
+	if file != '' && file
+		if file.length == 17
+			fileDoc = collection.findOne({_id:file})
+
+			if fileDoc
+				filename = fileDoc.name()
+				src = fileDoc.url()
+			else
+				# No subscription
+				filename = Session.get 'fileUploadSelected[' + name + ']'
+				obj =
+					template: getTemplate(filename, context)
+					data:
+						filename: filename
+						icon: getIcon filename
+				return obj
+		else
+			filename = file
+			src = filename
+
+	if filename
+		obj =
+			template: getTemplate(filename, context)
+			data:
+				src: src
+				filename: filename
+				icon: getIcon(filename)
+		obj
+
 getCollection = (context) ->
 	if typeof context.atts.collection == 'string'
 		context.atts.collection = FS._collections[context.atts.collection] or window[context.atts.collection]
@@ -100,9 +163,9 @@ Template.afFileUpload.events
 				if (AutoForm.getCurrentDataForForm af[0].id).autosave? is yes
 					af.submit()
 
-        # invoke the onUploaded callback
+				# invoke the onUploaded callback
 				if t?.data?.onUploaded
-          t?.data?.onUploaded(t, fileObj)
+					t?.data?.onUploaded(t, fileObj)
 
 				refreshFileInput name
 	'click .file-upload-clear': (e, t)->
@@ -126,64 +189,15 @@ Template.afFileUpload.helpers
 		delete atts.collection
 		atts
 	fileUpload: ->
-		# set callback to current template
-		@onUploaded ?= Template.parentData(13)?.onUploaded
-
-		af = Template.parentData(1)._af
-		# Template.parentData(4).value
-
-		name = @atts.name
-		collection = getCollection(@)
-
-		if af && af.submitType == 'insert'
-			doc = af.doc
-
-		parentData = Template.parentData(0)?.value or Template.parentData(4)?.value
-		if Session.equals('fileUpload['+name+']', 'delete-file')
-			return null
-		else if !!Session.get('fileUpload['+name+']')
-			file = Session.get('fileUpload['+name+']')
-		else if parentData
-			file = parentData
-		else
-			return null
-
-		if file != '' && file
-			if file.length == 17
-				if collection.findOne({_id:file})
-					filename = collection.findOne({_id:file}).name()
-					src = collection.findOne({_id:file}).url()
-				else
-					# No subscription
-					filename = Session.get 'fileUploadSelected[' + name + ']'
-					obj =
-						template: getTemplate(filename,@)
-						data:
-							filename: filename
-							icon: getIcon filename
-					return obj
-			else
-				filename = file
-				src = filename
-		if filename
-			obj =
-				template: getTemplate(filename,@)
-				data:
-					src: src
-					filename: filename
-					icon: getIcon(filename)
-			obj
+		getFile(@)
 	fileUploadSelected: (name)->
 		Session.get 'fileUploadSelected['+name+']'
 	isUploaded: (name,collection) ->
-		file = Session.get 'fileUpload['+name+']'
-		isUploaded = false
-		if file && file.length == 17
-			doc = window[collection].findOne({_id:file})
-			isUploaded = doc.isUploaded()
-		else
-			isUploaded = true
-		isUploaded
+		fileDoc = getFileDoc(@)
+		console.log 'isUploaded', fileDoc
+		fileDoc?.isUploaded() || false
+	file: ->
+		getFileDoc(@)
 
 	getFileByName: (name,collection)->
 		file = Session.get 'fileUpload['+name+']'
@@ -192,3 +206,6 @@ Template.afFileUpload.helpers
 			doc
 		else
 			null
+
+	uploadProgressTemplate: ->
+    	@atts?.uploadProgressTemplate or 'afFileUploadProgress'
